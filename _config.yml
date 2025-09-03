@@ -1,2 +1,11 @@
-theme: jekyll-theme-minimal
 title: sjmz
+
+author: serghej mazza
+email: serghejm@gmail.com
+
+theme: minima
+
+plugins:
+ - jekyll-feed
+ - jekyll-seo-tag
+
