@@ -1,7 +1,7 @@
 source "https://rubygems.org"
 
 gem "jekyll"
-gem "jekyll-theme-minimal"
+gem "minima"
 
 group :jekyll_plugins do
   gem "jekyll-feed"
