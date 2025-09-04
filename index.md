@@ -1,8 +1,9 @@
 ---
 layout: page
+title: Home
 ---
 
-# Posts
+## Posts
 
 <ul>
 	{% for post in site.posts %}
