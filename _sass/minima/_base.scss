@@ -124,11 +124,14 @@ li {
  * Headings
  */
 h1, h2, h3, h4, h5, h6 {
-  font-family: $headings-font-family;
   font-weight: $base-font-weight;
 }
 
-.post-content {
+.post-title{
+  font-family: $headings-font-family;
+}
+
+.post-content-post {
 	font-family: $pc-font-family;
 	font-size: $pc-font-size;
 	line-height: $pc-line-height;
