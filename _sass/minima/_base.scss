@@ -94,16 +94,16 @@ figcaption {
 
 .postlist li a {
 	display: block;
-	background-color: #546478;
+	background-color: $postlist-item-back-color;
 	margin-bottom: 0.5rem;
 	padding: 0.75rem 1rem;
 	border-radius: 6px;
-	color: #f6f8ff;
+	color: $postlist-item-text-color;
 	transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .postlist li a:hover {
-	background-color: #44505f;
+	background-color: $postlist-item-back-colorh;
 }
 
 ul, ol {
