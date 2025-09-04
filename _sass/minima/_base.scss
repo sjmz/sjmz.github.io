@@ -8,7 +8,15 @@ dl, dd, ol, ul, figure {
   padding: 0;
 }
 
+.site-header {
+	background-color: $hf-back-color; 
 
+}
+
+.site-footer {
+	background-color: $hf-back-color; 
+
+}
 
 /**
  * Basic styling
