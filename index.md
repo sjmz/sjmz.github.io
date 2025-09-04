@@ -2,7 +2,6 @@
 layout: page
 ---
 
-## Home
 # Posts
 
 <ul>
