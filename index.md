@@ -3,7 +3,7 @@ layout: page
 title: Home
 ---
 
-# A space on the internet for when I discover something cool
+# My space on the internet for cool stuff
 
 ## Posts
 
