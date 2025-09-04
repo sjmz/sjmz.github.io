@@ -3,10 +3,11 @@
  */
 .highlight {
   background: #fff;
+  border-radius: 6px;
   @extend %vertical-rhythm;
 
   .highlighter-rouge & {
-    background: #eef;
+    background: $code-back-color;
   }
 
   .c     { color: #998; font-style: italic } // Comment
@@ -33,7 +34,7 @@
   .kd    { font-weight: bold } // Keyword.Declaration
   .kp    { font-weight: bold } // Keyword.Pseudo
   .kr    { font-weight: bold } // Keyword.Reserved
-  .kt    { color: #458; font-weight: bold } // Keyword.Type
+  .kt    { color: #2f97c1; font-weight: bold } // Keyword.Type
   .m     { color: #099 } // Literal.Number
   .s     { color: #d14 } // Literal.String
   .na    { color: #008080 } // Name.Attribute
