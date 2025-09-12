@@ -101,3 +101,31 @@ Little is going on here, but that ``cfg`` is very important.
 Notably, the ``input`` function field specifies the handler of incoming packets on that socket.
 In this case set to ``rtnetlink_rcv``.
 
+# Netlink protocol(s)
+
+A typical netlink message is comprised of a header and a payload.
+Linux describes a netlink header with ``struct nlmsgh_hdr``, defined in include/uapi/linux/netlink.h as:
+```c
+struct nlmsghdr {                                                               
+        __u32      nlmsg_len;    /* Length of message including header */
+        __u16      nlmsg_type;   /* Message content */                   
+        __u16      nlmsg_flags;  /* Additional flags */                  
+        __u32      nlmsg_seq;    /* Sequence number */                   
+        __u32      nlmsg_pid;    /* Sending process port ID */           
+};                                                                              
+```
+
+The nlmsg_type field can assume four standard values: NLMSG_NOOP, NLMSG_ERROR, NLMSG_DONE, NLMSG_OVERRUN (more on these later).
+This field specifies the purpose/nature of the packet.
+These traditional values are generic and interpreted alone cannot fulfill the various needs of the different subsystems that use netlink sockets.
+For this reason, there is the tendency to add and define more specific packet types.
+rtnetlink defines additionally: RTM_GETLINK, RTM_NEWROUTE, RTM_GETNEXTHOP and many others.
+You can see all the routing specific packet types in `include/uapi/linux/rtnetlink.h`.
+In our case, for retrieving information about network interfaces, we need to send a RTM_GETLINK packet to the routing subsystem.
+
+Let's look at the other fields.
+
+* nlmsg_seq is used as an identifier for the packet. It is used to associate request to response. A response packet must set its sequence number to the one of the request it answers for.
+* nlmsg_pid identifies the sending process. Kernel messages are identified by 0, whereas user process usually use their pid.
+* nlmsg_flags specify some properties of the packet. Each bit of this field has a particular meaning. For example, the bit called NLM_F_REQUEST, specifies that the packet is a request message. NLM_F_MULTI says that the packet is part of a collection of responses that answer to the same request. This last flag is used in case a single response packet cannot provide all the necessary information , or simply for a more logical and structured communication.
+* nlmsg_len specifies the size of the whole packet: header length + payload length. More on this later.
