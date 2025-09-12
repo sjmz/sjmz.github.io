@@ -130,6 +130,8 @@ Let's look at the other fields.
 * nlmsg_flags specify some properties of the packet. Each bit of this field has a particular meaning. For example, the bit called NLM_F_REQUEST, specifies that the packet is a request message. NLM_F_MULTI says that the packet is part of a collection of responses that answer to the same request. This last flag is used in case a single response packet cannot provide all the necessary information , or simply for a more logical and structured communication.
 * nlmsg_len specifies the size of the whole packet: header length + payload length. More on this later.
 
+# nlmsghdr construction
+
 With this we can start constructing our packet starting from the header:
 ```c
 char send_buffer[MAX_PAYLOAD];
@@ -164,6 +166,8 @@ This is an important convention rule: each packet section must be padded such th
 For our request packet all sections are already aligned to 4 bytes, but it is good practice to have the general case in mind.
 Also, from the two snippets just shown, you can guess what our payload is.
 
+# ifinfomsg construction
+
 ``struct ifinfomsg`` is defined in include/uapi/linux/netlink.h as:
 ```c
 struct ifinfomsg {                                                     
@@ -177,6 +181,8 @@ struct ifinfomsg {
 ```
 
 For our purpose we can simply zero-out the whole structure, but for more refined requests ifi_index, for example, is used to specify the interface to fetch (see 'ip a show' output).
+
+# sending our message
 
 We can send our message with:
 ```c
