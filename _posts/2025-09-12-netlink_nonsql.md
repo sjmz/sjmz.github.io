@@ -178,3 +178,50 @@ struct ifinfomsg {
 
 For our purpose we can simply zero-out the whole structure, but for more refined requests ifi_index, for example, is used to specify the interface to fetch (see 'ip a show' output).
 
+We can send our message with:
+```c
+write_size = sendmsg(socket, &msg, 0);
+```
+
+but first we need to understand that `msg` argument.
+
+There is an indirect procedure when comes to sending data over a socket with sendmsg.
+The second argument to a sendmsg call is a pointer to a variable of type `struct msghdr`, which is defined as:
+```c
+struct msghdr {                                                   
+    void         *msg_name;       /* Optional address */          
+    socklen_t     msg_namelen;    /* Size of address */           
+    struct iovec *msg_iov;        /* Scatter/gather array */      
+    size_t        msg_iovlen;     /* # elements in msg_iov */     
+    void         *msg_control;    /* Ancillary data, see below */ 
+    size_t        msg_controllen; /* Ancillary data buffer len */ 
+    int           msg_flags;      /* Flags (unused) */            
+};                                                                
+```
+Where, for our purpose:
+* msg_name, believe it or not, specifies some information about the receiving socket
+* msg_namelen specifies the size of the aformentioned data structure that holds receiving socket information
+* msg_iov points to a structure called 'iovec'. This data structure refers to the actual data to send and its size
+* msg_iovlen is the number of these aformentioned 'iovecs'
+
+We can prepare all this with:
+```c
+struct sockaddr_nl dst_addr;
+struct msghdr msg;
+struct iov;
+
+memset(&dst_addr, 0, sizeof(dst_addr));
+dst_addr.nl_family = AF_NETLINK;
+
+memset(&msg, 0, sizeof(msg));
+
+iov.iov_base = send_buffer;
+iov.iov_len = nh_req->nlmsg_len;
+
+msg.msg_name = &dst_addr;
+msg.msg_namelen = sizeof(dst_addr);
+msg.msg_iov = &iov;
+msg.msg_iovlen = 1;
+```
+
+`struct sockaddr_nl` contains a field called 'nl_pid', which in our case must be set to 0 since we are talking to the kernel, remember?
