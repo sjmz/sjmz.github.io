@@ -89,10 +89,13 @@ figcaption {
 	margin: 0;
 }
 
+.postlist li{
+	list-style-type: none;
+}
+
 .postlist li a h1 {
 	margin: 0;
 	padding: 0;
-	list-style-type: none;
 }
 
 .postlist li a {
@@ -111,7 +114,6 @@ figcaption {
 
 ul, ol {
   margin-left: $spacing-unit;
-  list-style-type: none;
 }
 
 li {
