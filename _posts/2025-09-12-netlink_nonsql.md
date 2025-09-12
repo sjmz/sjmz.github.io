@@ -208,7 +208,7 @@ We can prepare all this with:
 ```c
 struct sockaddr_nl dst_addr;
 struct msghdr msg;
-struct iov;
+struct iovec iov;
 
 memset(&dst_addr, 0, sizeof(dst_addr));
 dst_addr.nl_family = AF_NETLINK;
