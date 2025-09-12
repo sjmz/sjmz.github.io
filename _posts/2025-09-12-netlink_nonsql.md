@@ -4,3 +4,100 @@ title: "Non-SQL kernel querying: how ip lists your interfaces"
 date: 2025-09-12
 ---
 
+``ip`` is one of the most useful tools when comes to managing network interfaces.<br/>
+You can bring an interface up:
+```
+$ sudo ip link set wlp1s0 up
+```
+Set it in promiscuous mode:
+```
+$ sudo ip link set dev wlp1s0 promisc on
+```
+Show some of its information:
+```
+$ sudo ip link show wlp1s0
+```
+
+That last command shows this:<br/>
+```
+2: wlp1s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DORMANT group default qlen 1000
+    link/ether a4:c3:f0:82:e6:9b brd ff:ff:ff:ff:ff:ff
+```
+
+How does this work? Simple in theory: the kernel holds this information in some kind of data structure to be retrieved. How do you retrieve this? Two main paths can be followed:
+* Old and deprecated: ioctl calls as ``ifconfig`` does
+* New and standard: user-kernel socket communication as ip implements
+
+We won't dive deep into that ifconfig approach, but instead we will see how ip uses ``netlink sockets`` to fetch information about network interfaces.
+
+# Netlink Sockets
+
+The netlink protocol is a socket-based IPC (Inter Process Communication) mechanism based on RFC 3549.
+It provides bidirectional communication between two or multiple processes.
+The usual communication model expects a user process to talk to a kernel subsystem through a socket following the netlink protocol rules.
+
+Information about network interfaces is handled by the routing subsystem, called ``rtnetlink``.<br/>
+To communicate with it we first need to create a socket, in this way:
+```c
+int s = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+```
+Notice how the domain and protocol fields are set.
+AF_NETLINK refers to the general protocol, in this case netlink.
+NETLINK_ROUTE specifies the netlink subsystem to talk to.
+Be aware that it is correct to define the protocol field as an identifier of a kernel-side listening/sending socket.
+Let me explain what I mean.
+
+To be clear, I am running Ubuntu 20.04.06 LTS with Linux 5.15.175.
+Code snippets may be outdated with respect to newer version of Linux, but typically the logic remains intact.
+Back to sockets.
+The creation of a kernel-side netlink socket is primarly handled by the ``netlink_kernel_create()`` function.
+This is actually a wrapper to the more low-level \_\_netlink_kernel_create() found in net/netlink/af_netlink.c
+We can 'grep' for this function call and find the active kernel-side netlink sockets.
+
+```
+$ grep -R --include=*.c "= netlink_kernel_create\("
+lib/kobject_uevent.c:	ue_sk->sk = netlink_kernel_create(net, NETLINK_KOBJECT_UEVENT, &cfg);
+net/xfrm/xfrm_user.c:	nlsk = netlink_kernel_create(net, NETLINK_XFRM, &cfg);
+net/ipv4/fib_frontend.c:	sk = netlink_kernel_create(net, NETLINK_FIB_LOOKUP, &cfg);
+net/netlink/genetlink.c:	net->genl_sock = netlink_kernel_create(net, NETLINK_GENERIC, &cfg);
+net/core/sock_diag.c:	net->diag_nlsk = netlink_kernel_create(net, NETLINK_SOCK_DIAG, &cfg);
+net/core/rtnetlink.c:	sk = netlink_kernel_create(net, NETLINK_ROUTE, &cfg);
+net/netfilter/nfnetlink.c:	nfnlnet->nfnl = netlink_kernel_create(net, NETLINK_NETFILTER, &cfg);
+security/selinux/netlink.c:	selnl = netlink_kernel_create(&init_net, NETLINK_SELINUX, &cfg);
+crypto/crypto_user_base.c:	net->crypto_nlsk = netlink_kernel_create(net, NETLINK_CRYPTO, &cfg);
+drivers/scsi/scsi_netlink.c:	scsi_nl_sock = netlink_kernel_create(&init_net, NETLINK_SCSITRANSPORT,
+drivers/scsi/scsi_transport_iscsi.c:	nls = netlink_kernel_create(&init_net, NETLINK_ISCSI, &cfg);
+drivers/staging/gdm724x/netlink_k.c:	sock = netlink_kernel_create(&init_net, unit, &cfg);
+drivers/connector/connector.c:	dev->nls = netlink_kernel_create(&init_net, NETLINK_CONNECTOR, &cfg);
+drivers/infiniband/core/netlink.c:	nls = netlink_kernel_create(net, NETLINK_RDMA, &cfg);
+kernel/audit.c:	aunet->sk = netlink_kernel_create(net, NETLINK_AUDIT, &cfg);
+```
+Notice how that ``sk = netlink_kernel_create(net, NETLINK_ROUTE, &cfg);`` aligns with its userland counterpart we create before.
+The messages that we will send will be received by this socket.
+
+Looking at `net/core/rtnetlink` reveals this:
+```c
+static int __net_init rtnetlink_net_init(struct net *net)
+{                                                            
+        struct sock *sk;                                     
+        struct netlink_kernel_cfg cfg = {                    
+                .groups         = RTNLGRP_MAX,               
+                .input          = rtnetlink_rcv,             
+                .cb_mutex       = &rtnl_mutex,               
+                .flags          = NL_CFG_F_NONROOT_RECV,     
+                .bind           = rtnetlink_bind,            
+        };                                                   
+                                                             
+        sk = netlink_kernel_create(net, NETLINK_ROUTE, &cfg);
+        if (!sk)                                             
+                return -ENOMEM;                              
+        net->rtnl = sk;                                      
+        return 0;                                            
+}                                                            
+```
+
+Little is going on here, but that ``cfg`` is very important.
+``struct netlink_kernel_cfg`` defines some properties of a kernel netlink socket.
+Notably, the ``input`` function field specifies the handler of incoming packets on that socket.
+In this case set to ``rtnetlink_rcv``.
+
