@@ -73,7 +73,7 @@ drivers/infiniband/core/netlink.c:	nls = netlink_kernel_create(net, NETLINK_RDMA
 kernel/audit.c:	aunet->sk = netlink_kernel_create(net, NETLINK_AUDIT, &cfg);
 ```
 Notice how that ``sk = netlink_kernel_create(net, NETLINK_ROUTE, &cfg);`` aligns with its userland counterpart we create before.
-The messages that we will send will be received by this socket.
+In our case, sent messages will be received by this 'rtnetlink' kernel socket.
 
 Looking at `net/core/rtnetlink` reveals this:
 ```c
