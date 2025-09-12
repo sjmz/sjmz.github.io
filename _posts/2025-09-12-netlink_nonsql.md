@@ -129,3 +129,52 @@ Let's look at the other fields.
 * nlmsg_pid identifies the sending process. Kernel messages are identified by 0, whereas user process usually use their pid.
 * nlmsg_flags specify some properties of the packet. Each bit of this field has a particular meaning. For example, the bit called NLM_F_REQUEST, specifies that the packet is a request message. NLM_F_MULTI says that the packet is part of a collection of responses that answer to the same request. This last flag is used in case a single response packet cannot provide all the necessary information , or simply for a more logical and structured communication.
 * nlmsg_len specifies the size of the whole packet: header length + payload length. More on this later.
+
+With this we can start constructing our packet starting from the header:
+```c
+char send_buffer[MAX_PAYLOAD];
+memset(send_buffer, 0, MAX_PAYLOAD);
+
+struct nlmsghdr * nh = (struct nlmsghdr *) send_buffer;
+
+nh_req->nlmsg_type = RTM_GETLINK;
+nh_req->nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP
+nh_req->nlmsg_len = NLMSG_SPACE(sizeof(struct ifinfomsg));
+nh_req->nlmsg_pid = getpid();
+nh_req->nlmsg_seq = 1999;
+```
+
+I do not use dynamic memory for storing the packet, but I simply use a stack array that is sufficiently large for the whole message.
+
+The first thing to notice is the value for the nlmsg_flags field.
+I set the NLM_F_REQUEST flag, but also NLM_F_DUMP.
+This last flag tells rtnetlink to 'dump' the information of all the interfaces.
+
+The value for nlmsg_len might seem weird but it simply respects that header length + payload length rule.
+The NLMSG_SPACE macro is defined in the following manner (include/uapi/linux/netlink.h):
+```c
+#define NLMSG_SPACE(len) NLMSG_ALIGN(NLMSG_LENGTH(len))                  
+#define NLMSG_LENGTH(len) ((len) + NLMSG_HDRLEN)                         
+#define NLMSG_HDRLEN     ((int) NLMSG_ALIGN(sizeof(struct nlmsghdr)))    
+#define NLMSG_ALIGN(len) ( ((len)+NLMSG_ALIGNTO-1) & ~(NLMSG_ALIGNTO-1) )
+#define NLMSG_ALIGNTO   4U                                               
+```
+
+This is an important convention rule: each packet section must be padded such that its size is aligned to / is a multiple of a defined constant.
+For our request packet all sections are already aligned to 4 bytes, but it is good practice to have the general case in mind.
+Also, from the two snippets just shown, you can guess what our payload is.
+
+``struct ifinfomsg`` is defined in include/uapi/linux/netlink.h as:
+```c
+struct ifinfomsg {                                                     
+        unsigned char   ifi_family;                                    
+        unsigned char   __ifi_pad;                                     
+        unsigned short  ifi_type;      /* ARPHRD_* */         
+        int             ifi_index;     /* Link index   */     
+        unsigned        ifi_flags;     /* IFF_* flags  */     
+        unsigned        ifi_change;    /* IFF_* change mask */
+};                                                                     
+```
+
+For our purpose we can simply zero-out the whole structure, but for more refined requests ifi_index, for example, is used to specify the interface to fetch (see 'ip a show' output).
+
