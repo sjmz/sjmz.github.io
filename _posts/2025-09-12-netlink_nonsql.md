@@ -431,6 +431,56 @@ By looking at include/uapi/linux/rtnetlink.h we can see that this response is a 
 In the same file we can see how that bit is called NLM_F_MULTI.
 This means that, as response, we got multiple RTM_NEWLINK packets.
 One for each individual interface.
-Since this very first response contains legit information we can investigate even more 
+Since this very first response contains legit information we can investigate even more.
+
+# **more in-depth: ifinfomsg response**
+
+The ifi_index value is '1' and the output of ``ip link`` shows me this.
+```text
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+2: wlp1s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DORMANT group default qlen 1000
+    link/ether a4:c3:f0:82:e6:9b brd ff:ff:ff:ff:ff:ff
+```
+The response is about the interface of index 1: 'lo' a.k.a. **the loopback interface**.
 
 
+Let's compare the interface flags we received as response to the ones shown by ip.
+
+``65609`` is ``10000000001001001`` in binary.
+
+include/uapi/linux/if.h shows this:
+```c
+enum net_device_flags {
+/* for compatibility with glibc net/if.h */
+#if __UAPI_DEF_IF_NET_DEVICE_FLAGS
+	IFF_UP				= 1<<0,  /* sysfs */
+	IFF_BROADCAST			= 1<<1,  /* volatile */
+	IFF_DEBUG			= 1<<2,  /* sysfs */
+	IFF_LOOPBACK			= 1<<3,  /* volatile */
+	IFF_POINTOPOINT			= 1<<4,  /* volatile */
+	IFF_NOTRAILERS			= 1<<5,  /* sysfs */
+	IFF_RUNNING			= 1<<6,  /* volatile */
+	IFF_NOARP			= 1<<7,  /* sysfs */
+	IFF_PROMISC			= 1<<8,  /* sysfs */
+	IFF_ALLMULTI			= 1<<9,  /* sysfs */
+	IFF_MASTER			= 1<<10, /* volatile */
+	IFF_SLAVE			= 1<<11, /* volatile */
+	IFF_MULTICAST			= 1<<12, /* sysfs */
+	IFF_PORTSEL			= 1<<13, /* sysfs */
+	IFF_AUTOMEDIA			= 1<<14, /* sysfs */
+	IFF_DYNAMIC			= 1<<15, /* sysfs */
+#endif /* __UAPI_DEF_IF_NET_DEVICE_FLAGS */
+#if __UAPI_DEF_IF_NET_DEVICE_FLAGS_LOWER_UP_DORMANT_ECHO
+	IFF_LOWER_UP			= 1<<16, /* volatile */
+	IFF_DORMANT			= 1<<17, /* volatile */
+	IFF_ECHO			= 1<<18, /* volatile */
+#endif /* __UAPI_DEF_IF_NET_DEVICE_FLAGS_LOWER_UP_DORMANT_ECHO */
+};
+```
+
+From this we can that the following bits are set: **IFF_UP**, **IFF_LOOPBACK**, **IFF_RUNNING** and **IFF_LOWER_UP**.
+Which is coherent to what ip teels us about the loopback interface.
+At least with the IFF_UP, IFF_LOOPBACK and IFF_LOWER_UP bits.
+
+Let's now extract the interface name and its MAC address stored in the attributes section of the packet.
