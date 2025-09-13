@@ -530,3 +530,21 @@ This is coherent to what ip teels us about the loopback interface.
 At least with the IFF_UP, IFF_LOOPBACK and IFF_LOWER_UP bits.
 
 Let's now extract the interface name and its MAC address stored in the attributes section of the response packet.
+
+Internally, a netlink attribute is represented by ``struct nlattr``.
+You can find its definition in **include/uapi/linux/netlink.h** alongside a nice visualization of its location in a complete TLV structure:
+```c
+/*
+ *  <------- NLA_HDRLEN ------> <-- NLA_ALIGN(payload)-->
+ * +---------------------+- - -+- - - - - - - - - -+- - -+
+ * |        Header       | Pad |     Payload       | Pad |
+ * |   (struct nlattr)   | ing |                   | ing |
+ * +---------------------+- - -+- - - - - - - - - -+- - -+
+ *  <-------------- nlattr->nla_len -------------->
+ */
+
+struct nlattr {
+	__u16           nla_len;
+	__u16           nla_type;
+};
+```
