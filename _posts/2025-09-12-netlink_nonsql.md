@@ -238,7 +238,7 @@ msg.msg_iov = &iov;
 msg.msg_iovlen = 1;
 ```
 
-`struct sockaddr_nl` contains a field called *nl_pid*, which in our case must be set to 0 since we are talking to the kernel, remember?
+`struct sockaddr_nl` contains a field called nl_pid, which in our case must be set to 0 since we are talking to the kernel, remember?
 
 # **// interpreting the response**
 
