@@ -30,7 +30,7 @@ How does this work? Simple in theory: the kernel holds this information in some 
 
 We won't dive deep into that ifconfig approach, but instead we will see how ip uses ``netlink sockets`` to fetch information about network interfaces.
 
-# Netlink Sockets
+# **netlink nockets**
 
 The netlink protocol is a socket-based IPC (Inter Process Communication) mechanism based on RFC 3549.
 It provides bidirectional communication between two or multiple processes.
@@ -44,7 +44,7 @@ int s = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
 Notice how the domain and protocol fields are set.
 AF_NETLINK refers to the general protocol, in this case netlink.
 NETLINK_ROUTE specifies the netlink subsystem to talk to.
-Be aware that it is correct to define the protocol field as an identifier of a kernel-side listening/sending socket.
+Be aware that it is correct to define the protocol field as the identifier of a kernel-side listening/sending socket.
 Let me explain what I mean.
 
 To be clear, I am running Ubuntu 20.04.06 LTS with Linux 5.15.175.
@@ -101,7 +101,7 @@ Little is going on here, but that ``cfg`` is very important.
 Notably, the ``input`` function field specifies the handler of incoming packets on that socket.
 In this case set to ``rtnetlink_rcv``.
 
-# Netlink protocol(s)
+# **netlink protocol(s)**
 
 A typical netlink message is comprised of a header and a payload.
 Linux describes a netlink header with ``struct nlmsgh_hdr``, defined in include/uapi/linux/netlink.h as:
@@ -127,10 +127,10 @@ Let's look at the other fields.
 
 * nlmsg_seq is used as an identifier for the packet. It is used to associate request to response. A response packet must set its sequence number to the one of the request it answers for.
 * nlmsg_pid identifies the sending process. Kernel messages are identified by 0, whereas user process usually use their pid.
-* nlmsg_flags specify some properties of the packet. Each bit of this field has a particular meaning. For example, the bit called NLM_F_REQUEST, specifies that the packet is a request message. NLM_F_MULTI says that the packet is part of a collection of responses that answer to the same request. This last flag is used in case a single response packet cannot provide all the necessary information , or simply for a more logical and structured communication.
+* nlmsg_flags specifies some properties of the packet. Usually, a single bit of this field has a particular meaning. For example, the bit called NLM_F_REQUEST, specifies that the packet is a request message. NLM_F_MULTI says that the packet is part of a collection of responses that answer to the same request. This last flag is used in case a single response packet cannot provide all the necessary information , or simply for a more logical and structured communication. 
 * nlmsg_len specifies the size of the whole packet: header length + payload length. More on this later.
 
-# nlmsghdr construction
+# **nlmsghdr construction**
 
 With this we can start constructing our packet starting from the header:
 ```c
@@ -166,7 +166,7 @@ This is an important convention rule: each packet section must be padded such th
 For our request packet all sections are already aligned to 4 bytes, but it is good practice to have the general case in mind.
 Also, from the two snippets just shown, you can guess what our payload is.
 
-# ifinfomsg construction
+# **ifinfomsg construction**
 
 ``struct ifinfomsg`` is defined in include/uapi/linux/netlink.h as:
 ```c
@@ -182,7 +182,7 @@ struct ifinfomsg {
 
 For our purpose we can simply zero-out the whole structure, but ifi_index, for example, is used to specify the particular interface to fetch (see 'ip a show' output).
 
-# sending our message
+# **sending our message**
 
 We can send our message with:
 ```c
@@ -232,7 +232,7 @@ msg.msg_iovlen = 1;
 
 `struct sockaddr_nl` contains a field called 'nl_pid', which in our case must be set to 0 since we are talking to the kernel, remember?
 
-# interpreting the response
+# **interpreting the response**
 
 The response to a RTM_GETLINK dump request is a packet comprised of: nlmsghdr + ifinfomsg + several attributes.
 The ifinfomsg inside provides some general information about the interface. Most notably, the ifi_flags field is set to a value that represents the state of that device.
@@ -243,10 +243,12 @@ wlp1s0: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
 
 Now to the attributes.
 Interface name, MAC address, MTU value and other characteristics are packed in a structure called Type-Length-Value (TLV).
+A TLV structure is actually a standard way of encoding information.
 Type refers to how the attribute payload is to be interpreted.
 Whether is a string, an integer number or some other kind of data.
 Length is how much space the payload occupies.
 Be aware that a length field isn't always to be considered as 'the number of bytes'.
+Value is the actual payload (raw bytes).
 
 What happens in practice is that rtnetlink has its own set of specific attribute types.
 If we were to extract the interface name, we would search for a IFLA_IFNAME type of attribute in the attributes section of the response.
@@ -267,8 +269,8 @@ static int rtnl_fill_ifinfo(struct sk_buff *skb,
 
    nlh = nlmsg_put(skb, pid, seq, type, sizeof(*ifm), flags);
      // make space for nlmsghdr + ifinfomsg
-   if (nlh == NULL)
-      return -EMSGSIZE;
+
+   [...]
 
    ifm = nlmsg_data(nlh);  // (unsigned char *) nlh + NLMSG_HDRLEN;
    ifm->ifi_family = AF_UNSPEC;
@@ -290,3 +292,143 @@ static int rtnl_fill_ifinfo(struct sk_buff *skb,
 ```
 
 A few calls down from any 'nla_put' function, there is the presence of \_\_nla_reserve which makes space for the attribute to append and sets the TLV type field to the one specified as argument: IFLA_IFNAME, IFLA_TXQLEN, IFLA_LINKMODE etc.
+
+# **more in-depth: nlmsghdr response**
+
+Let's put together a simple example.
+We send a RTM_GETLINK message and print the header of the netlink message we receive as response:
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <unistd.h>
+#include <asm/types.h>
+#include <sys/socket.h>
+#include <linux/rtnetlink.h>
+#include <linux/netlink.h>
+#include <net/if.h>
+
+#define MAX_PAYLOAD 8192
+
+void print_hdr(struct nlmsghdr * nh){
+	printf("  length: %d\n", nh->nlmsg_len);
+	printf("  type: %d\n", nh->nlmsg_type);
+	printf("  flags: %d\n", nh->nlmsg_flags);
+	printf("  seq: %d\n", nh->nlmsg_seq);
+	printf("  port: %d\n", nh->nlmsg_pid);
+}
+
+int main(int argc, char ** argv[]){
+
+	int s;
+	ssize_t read_size, write_size;
+	struct sockaddr_nl src_addr, dst_addr;
+	struct msghdr req_msg, rsp_msg;
+	struct iovec req_iov, rsp_iov;
+	struct nlmsghdr * nh_req;
+	struct nlmsghdr * nh_rsp;
+
+	char send_buffer[MAX_PAYLOAD];
+	char recv_buffer[MAX_PAYLOAD];
+
+	printf("[*] user pid: %d\n", getpid());
+
+	s = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+
+	if(s < 0){
+		printf("[-] can't create socket\n");
+		exit(-1);
+	}
+
+	printf("[+] NETLINK_ROUTE socket created\n");
+
+	memset(&src_addr, 0, sizeof(src_addr));
+	memset(&dst_addr, 0, sizeof(dst_addr));
+	src_addr.nl_family = AF_NETLINK;
+	dst_addr.nl_family = AF_NETLINK;
+	src_addr.nl_pid = getpid();
+	
+	if(bind(s, (struct sockaddr *) &src_addr, sizeof(src_addr)) < 0){
+		perror("[-] Can't bind");
+		exit(-1);
+	}
+
+	printf("[+] NETLINK_ROUTE socket bound\n");
+
+	memset(send_buffer, 0, MAX_PAYLOAD);
+	memset(recv_buffer, 0, MAX_PAYLOAD);
+
+	nh_req = (struct nlmsghdr *) send_buffer;
+
+	nh_req->nlmsg_type = RTM_GETLINK;
+	nh_req->nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
+	nh_req->nlmsg_len = NLMSG_SPACE(sizeof(struct ifinfomsg));
+	nh_req->nlmsg_pid = getpid();
+	nh_req->nlmsg_seq = 1999;
+
+	memset(&req_msg, 0, sizeof(struct msghdr));
+	req_iov.iov_base = send_buffer;
+	req_iov.iov_len = nh_req->nlmsg_len;
+	req_msg.msg_name = &dst_addr;
+	req_msg.msg_namelen = sizeof(dst_addr);
+	req_msg.msg_iov = &req_iov;
+	req_msg.msg_iovlen = 1;
+
+	write_size = sendmsg(s, &req_msg, 0);
+	if(write_size < 0){
+		perror("[-] Can't send data");
+		exit(-1);
+	}
+
+	printf("[+] %ld bytes sent\n\n", write_size);
+
+	memset(&rsp_msg, 0, sizeof(struct msghdr));
+	rsp_iov.iov_base = recv_buffer;
+	rsp_iov.iov_len = MAX_PAYLOAD;
+	rsp_msg.msg_name = &dst_addr;
+	rsp_msg.msg_namelen = sizeof(dst_addr);
+	rsp_msg.msg_iov = &rsp_iov;
+	rsp_msg.msg_iovlen = 1;
+
+
+	read_size = recvmsg(s, &rsp_msg, 0);
+	if(read_size < 0){
+		perror("[-] Can't receive data");
+		exit(-1);
+	}
+
+	nh_rsp = (struct nlmsghdr *) recv_buffer;
+	printf("[ NLMSGHDR RSP ]\n");
+	print_hdr(nh_rsp);
+
+	close(s);
+
+	return 0;
+}
+```
+The associated output:
+```
+$ ./netlink_simple
+[*] user pid: 502006
+[+] NETLINK_ROUTE socket created
+[+] NETLINK_ROUTE socket bound
+[+] 32 bytes sent
+
+[ NLMSGHDR RSP ]
+  length: 1348
+  type: 16
+  flags: 2
+  seq: 1999
+  port: 502006
+```
+
+Let's start simple.
+Look at how the response matches both the process id of the sender and the sequence number of the request we made.
+Next, **type: 16**.
+By looking at include/uapi/linux/rtnetlink.h we can see that this response is a RTM_NEWLINK packet.
+**flags: 2** means that the second bit of the flags field is set.
+In the same file we can see how that bit is called NLM_F_MULTI.
+This means that, as response, we got multiple RTM_NEWLINK packets.
+One for each individual interface.
+
