@@ -643,6 +643,6 @@ And with this we get:
   MAC address: 00:00:00:00:00:00  
 ```
 This is everything but clean as there is no real guarantee that we find a MAC address.
-In this case is to ok do it, but a better approach cas be discussed.
+In this case is to ok do it, but a better approach can be discussed.
 
 I stop here for now. There is a lot to explore and so it is better to split this netlink 'journey' in multiple blogposts. I hope you found this interesting.
