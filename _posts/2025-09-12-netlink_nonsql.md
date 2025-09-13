@@ -769,7 +769,7 @@ This is the output:
         | interface: wlp1s0
         | MAC address: a4:c3:f0:82:e6:9b
 ```
-Let's try to add some mock interfaces to see how the program responds:
+Let's add some mock interfaces to see how the program responds:
 ```
 $ sudo ip link add name dummy0 type dummy
 $ sudo ip link add name THISISATEST type dummy
