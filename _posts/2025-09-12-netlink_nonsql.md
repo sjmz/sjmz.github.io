@@ -75,7 +75,7 @@ kernel/audit.c:	aunet->sk = netlink_kernel_create(net, NETLINK_AUDIT, &cfg);
 Notice how that ``sk = netlink_kernel_create(net, NETLINK_ROUTE, &cfg);`` aligns with its userland counterpart we create before.
 In our case, sent messages will be received by this 'rtnetlink' kernel socket.
 
-Looking at `net/core/rtnetlink` reveals this:
+Looking at `net/core/rtnetlink.c` reveals this:
 ```c
 static int __net_init rtnetlink_net_init(struct net *net)
 {                                                            
@@ -149,7 +149,7 @@ nh_req->nlmsg_seq = 1999;
 I do not use dynamic memory for storing the packet, but I simply use a stack array that is sufficiently large for the whole message.
 
 The first thing to notice is the value for the nlmsg_flags field.
-I set the NLM_F_REQUEST flag, but also NLM_F_DUMP.
+The NLM_F_REQUEST flag is set, as well as NLM_F_DUMP.
 This last flag tells rtnetlink to 'dump' the information of all the interfaces.
 
 The value for nlmsg_len might seem weird but it simply respects that header length + payload length rule.
@@ -180,7 +180,7 @@ struct ifinfomsg {
 };                                                                     
 ```
 
-For our purpose we can simply zero-out the whole structure, but for more refined requests ifi_index, for example, is used to specify the interface to fetch (see 'ip a show' output).
+For our purpose we can simply zero-out the whole structure, but ifi_index, for example, is used to specify the particular interface to fetch (see 'ip a show' output).
 
 # sending our message
 
@@ -231,3 +231,62 @@ msg.msg_iovlen = 1;
 ```
 
 `struct sockaddr_nl` contains a field called 'nl_pid', which in our case must be set to 0 since we are talking to the kernel, remember?
+
+# interpreting the response
+
+The response to a RTM_GETLINK dump request is a packet comprised of: nlmsghdr + ifinfomsg + several attributes.
+The ifinfomsg inside provides some general information about the interface. Most notably, the ifi_flags field is set to a value that represents the state of that device.
+Reconsider the ip output and notice the various flags set for your interfaces:
+```
+wlp1s0: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
+```
+
+Now to the attributes.
+Interface name, MAC address, MTU value and other characteristics are packed in a structure called Type-Length-Value (TLV).
+Type refers to how the attribute payload is to be interpreted.
+Whether is a string, an integer number or some other kind of data.
+Length is how much space the payload occupies.
+Be aware that a length field isn't always to be considered as 'the number of bytes'.
+
+What happens in practice is that rtnetlink has its own set of specific attribute types.
+If we were to extract the interface name, we would search for a IFLA_IFNAME type of attribute in the attributes section of the response.
+Similar thing for the MAC address which is identified with the IFLA_ADDRESS type.
+You can look at all the specific attribute types in include/uapi/linux/if_link.h.
+
+Just for completeness, look at how the attributes are set when a response to a rtnetlink dump request is constructed in the kernel.
+rtnl_fill_ifinfo implemented in net/core/rtnetlink.c shows this:
+```c
+static int rtnl_fill_ifinfo(struct sk_buff *skb,
+			    struct net_device *dev, // fetched interface
+			    int type, u32 pid, u32 seq,
+			    unsigned int flags, ...)
+{
+   struct ifinfomsg *ifm;
+   struct nlmsghdr *nlh;
+   [...]
+
+   nlh = nlmsg_put(skb, pid, seq, type, sizeof(*ifm), flags);
+     // make space for nlmsghdr + ifinfomsg
+   if (nlh == NULL)
+      return -EMSGSIZE;
+
+   ifm = nlmsg_data(nlh);  // (unsigned char *) nlh + NLMSG_HDRLEN;
+   ifm->ifi_family = AF_UNSPEC;
+   ifm->__ifi_pad = 0;
+   ifm->ifi_type = dev->type;
+   ifm->ifi_index = dev->ifindex;  // 1, 2, 3 as ip shows
+   ifm->ifi_flags = dev_get_flags(dev);  // UP, BROADCAST, LOOKUP, PROMISC etc.
+   ifm->ifi_change = change;
+
+   [...]
+
+   if (nla_put_string(skb, IFLA_IFNAME, dev->name) ||  // if. name: lo, wlp1s0 etc.
+      nla_put_u32(skb, IFLA_TXQLEN, dev->tx_queue_len) ||
+      nla_put_u8(skb, IFLA_OPERSTATE,
+	       netif_running(dev) ? dev->operstate : IF_OPER_DOWN) ||
+      nla_put_u8(skb, IFLA_LINKMODE, dev->link_mode) ||
+      nla_put_u32(skb, IFLA_MTU, dev->mtu) ||
+
+```
+
+A few calls down from any 'nla_put' function, there is the presence of \_\_nla_reserve which makes space for the attribute to append and sets the TLV type field to the one specified as argument: IFLA_IFNAME, IFLA_TXQLEN, IFLA_LINKMODE etc.
