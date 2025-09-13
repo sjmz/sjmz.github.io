@@ -6,20 +6,20 @@ date: 2025-09-12
 
 ``ip`` is one of the most useful tools when comes to managing network interfaces.<br/>
 You can bring an interface up:
-```
+```text
 $ sudo ip link set wlp1s0 up
 ```
 Set it in promiscuous mode:
-```
+```text
 $ sudo ip link set dev wlp1s0 promisc on
 ```
 Show some of its information:
-```
+```text
 $ sudo ip link show wlp1s0
 ```
 
 That last command shows this:<br/>
-```
+```text
 2: wlp1s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DORMANT group default qlen 1000
     link/ether a4:c3:f0:82:e6:9b brd ff:ff:ff:ff:ff:ff
 ```
@@ -54,7 +54,7 @@ The creation of a kernel-side netlink socket is primarly handled by the ``netlin
 This is actually a wrapper to the more low-level \_\_netlink_kernel_create() found in net/netlink/af_netlink.c
 We can 'grep' for this function call and find the active kernel-side netlink sockets.
 
-```
+```text
 $ grep -R --include=*.c "= netlink_kernel_create\("
 lib/kobject_uevent.c:	ue_sk->sk = netlink_kernel_create(net, NETLINK_KOBJECT_UEVENT, &cfg);
 net/xfrm/xfrm_user.c:	nlsk = netlink_kernel_create(net, NETLINK_XFRM, &cfg);
@@ -237,7 +237,7 @@ msg.msg_iovlen = 1;
 The response to a RTM_GETLINK dump request is a packet comprised of: nlmsghdr + ifinfomsg + several attributes.
 The ifinfomsg inside provides some general information about the interface. Most notably, the ifi_flags field is set to a value that represents the state of that device.
 Reconsider the ip output and notice the various flags set for your interfaces:
-```
+```text
 wlp1s0: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
 ```
 
@@ -408,7 +408,7 @@ int main(int argc, char ** argv[]){
 }
 ```
 The associated output:
-```
+```text
 $ ./netlink_simple
 [*] user pid: 502006
 [+] NETLINK_ROUTE socket created
@@ -431,4 +431,6 @@ By looking at include/uapi/linux/rtnetlink.h we can see that this response is a 
 In the same file we can see how that bit is called NLM_F_MULTI.
 This means that, as response, we got multiple RTM_NEWLINK packets.
 One for each individual interface.
+Since this very first response contains legit information we can investigate even more 
+
 
