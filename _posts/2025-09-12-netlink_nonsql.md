@@ -252,11 +252,9 @@ wlp1s0: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
 Now to the attributes.
 Interface name, MAC address, MTU value and other characteristics are packed in a structure called Type-Length-Value (TLV).
 A TLV structure is actually a standard way of encoding information.
-Type refers to how the attribute payload is to be interpreted.
-Whether is a string, an integer number or some other kind of data.
-Length is how much space the payload occupies.
-Be aware that a length field isn't always to be considered as 'the number of bytes'.
-Value is the actual payload (raw bytes).
+* **Type** refers to how the attribute payload is to be interpreted. Whether is a string, an integer number or some other kind of data.
+* **Length** is how much space the payload occupies. Be aware that a length value isn't always to be considered as 'the number of bytes'.
+* **Value** is the actual payload (sequence of raw bytes).
 
 What happens in practice is that rtnetlink has its own set of specific attribute types.
 If we were to extract the interface name, we would search for a IFLA_IFNAME type of attribute in the attributes section of the response.
