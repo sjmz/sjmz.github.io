@@ -558,7 +558,7 @@ To access the next attribute we simply do: ``((char *) attr) + NLA_ALIGN(attr->n
 Notice in the diagram how the nla_len field doesn't take in consideration the space dedicated for additional padding.
 For this reason we round nla_len up with the **NLA_ALIGN** macro.
 
-# **a first result: interface name extraction**
+# **a first result: extracting the interface name**
 
 Let's extract the information of the very first attribute stored in the response packet.
 ```c
@@ -579,4 +579,26 @@ int main() {
 
 The output:
 ```text
+[*] user pid: 514077
+[+] NETLINK_ROUTE socket created
 
+[...]
+
+[ NLATTR ]
+  type: 3
+  len: 7
+```
+
+By looking at **include/uapi/linux/if_link.h**, we see that a type 3 attribute is identified as IFLA_IFNAME: the name of the interface !.
+Let's print it:
+```c
+printf("  if name: %s\n", ((char *) attr) + NLA_HDRLEN);
+```
+```text
+[ NLATTR ]
+  type: 3
+  len: 7
+  if name: lo
+```
+
+# **a second result: extracting the MAC address**
