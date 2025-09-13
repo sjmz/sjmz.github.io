@@ -726,7 +726,7 @@ This addition brings this kind of result:
 # **// finalizing**
 
 Let's put everything together and print a complete report of each interface data.
-You can download the source of the complete example [here](/assets/code/ip_clone.c).
+You can download the source of the complete example <a href="/assets/code/ip_clone.c" download>here</a>.
 Printing is a bit nicer and code has been organized a bit, but the ideas are the same.
 This is the output:
 ```text
