@@ -645,4 +645,30 @@ And with this we get:
 This is everything but clean as there is no real guarantee that we find a MAC address.
 In this case is to ok do it, but a better approach can be discussed.
 
-I stop here for now. There is a lot to explore and so it is better to split this netlink 'journey' in multiple blogposts. I hope you found this interesting.
+# **// smoother nlattr traversal**
+
+When extracting information from an attribute section, the number of nlattr structures inside is not known a-priori.
+However, we can use the length field of the nlmsghdr structure to our advantage.<br/>
+By subtracting from the total message size the length of the nlmsghdr and ifinfomsg sections, we obtain the size of the attribute section.
+We can then traverse the whole attribute section until all data is consumed.
+```c
+int main(){
+
+      [...]
+
+      char * data;
+      attr = (struct nlattr * )(((char *) nh_rsp) + NLMSG_ALIGN(NLMSG_HDRLEN + sizeof(struct ifinfomsg)));
+      asize = nh_rsp->nlmsg_len - NLMSG_ALIGN(NLMSG_HDRLEN + sizeof(struct ifinfomsg));
+
+      while(asize > 0){
+
+	  if(attr->nla_type == 1)
+	      print_mac(attr);
+	  if(attr->nla_type == 3)
+	      print_ifname(attr);
+
+          asize = asize - NLA_ALIGN(attr->nla_len);
+          attr = (struct nlattr *)(((char *) attr) + NLA_ALIGN(attr->nla_len));
+      }
+}
+```
