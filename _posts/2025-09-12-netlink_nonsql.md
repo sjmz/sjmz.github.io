@@ -602,3 +602,37 @@ printf("  if name: %s\n", ((char *) attr) + NLA_HDRLEN);
 ```
 
 # **a second result: extracting the MAC address**
+
+A MAC address is a 6 bytes payload and internally is identified with the IFLA_ADDRESS attribute type.
+We can traverse the attribute section and print it as we find it:
+
+```c
+void print_mac(struct nlattr * attr){
+	unsigned char * mac;
+	mac = ((char *) attr) + NLA_HDRLEN;
+	printf("  MAC address: %.2x:%.2x:%.2x:%.2x:%.2x:%.2x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
+int main(){
+
+	[...]
+
+	while(1){
+		if(attr->nla_type == 1){
+			printf("[ NLATTR ]\n");
+			print_mac(attr);
+			break;
+		}
+		attr = (struct nlattr *)(((char *) attr) + NLA_ALIGN(attr->nla_len));
+	}
+}
+```
+And with this we get:
+```text
+[ NLATTR ]
+  type: 1
+  len: 10
+  MAC address: 00:00:00:00:00:00  
+```
+This is everything but clean as there is no real guarantee that we find a MAC address.
+In this case is safe to do it, but a better approach will be discussed later.
