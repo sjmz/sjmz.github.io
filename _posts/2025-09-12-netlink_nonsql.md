@@ -548,3 +548,11 @@ struct nlattr {
 	__u16           nla_type;
 };
 ```
+
+This means that given a pointer defined as ``struct nlattr * attr``, we can access the stored payload by computing ``((char *) attr) + NLA_HDRLEN``.
+This will result in the access of the first byte of the payload.
+Then, depending on the context, the resulting pointer can be treated in different ways.
+To access the next attribute we simply do: ``((char *) attr) + NLA_ALIGN(attr->nla_len)``.
+Notice in the diagram how the nla_len field doesn't take in consideration the space dedicated for additional padding.
+For this reason we round nla_len up with the **NLA_ALIGN** macro.
+
