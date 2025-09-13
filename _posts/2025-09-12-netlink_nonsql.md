@@ -672,3 +672,180 @@ int main(){
       }
 }
 ```
+
+# **// multi-part message parsing**
+
+Given a `struct nlmsghdr * nh`, it is possible to jump to the next netlink packet by doing `(struct nlmsghdr *)(((char *) nh) + nh->nlmsg_len)`.
+In a multi-part message a response is split in many packets.
+At the end of this packet chain, there is a special message that denotes the end of this 'long' response.
+It is still a netlink packet, but of type NLMSG_DONE.
+```c
+int finish = 0;
+
+while(!finish){
+      nh_rsp = (struct nlmsghdr *) recv_buffer;
+
+      read_size = recvmsg(s, &rsp_msg, 0);
+      if(read_size < 0){
+           perror("[-] Can't receive data");
+	   exit(-1);
+      }
+
+      while(nh_rsp->nlmsg_type != NLMSG_DONE && read_size > 0){
+           printf("[ NLMSGHDR RSP ]\n");
+	   print_hdr(nh_rsp);
+	
+	   read_size = read_size - nh_rsp->nlmsg_len;
+	   nh_rsp = (struct nlmsghdr *)(((char *) nh_rsp) + nh_rsp->nlmsg_len);
+      }
+
+      finish = nh_rsp->nlmsg_type == NLMSG_DONE;
+}
+```
+This addition brings this kind of result:
+```text
+[*] user pid: 530243
+[+] NETLINK_ROUTE socket created
+[+] NETLINK_ROUTE socket bound
+[+] 32 bytes sent
+
+[ NLMSGHDR RSP ]
+  length: 1348
+  type: 16
+  flags: 2
+  seq: 1999
+  port: 530243
+[ NLMSGHDR RSP ]
+  length: 1392
+  type: 16
+  flags: 2
+  seq: 1999
+  port: 530243
+```
+
+# **// finalizing**
+
+Let's put everything together and print a complete report of each interface data.
+You can download the source of the complete example here.
+Printing is a bit nicer and code has been organized a bit, but the ideas are the same.
+This is the output:
+```text
+[*] user pid: 531576
+[+] NETLINK_ROUTE socket created
+[+] NETLINK_ROUTE socket bound
+[+] 32 bytes sent
+
+[ NLMSGHDR ]
+  | length: 1348
+  | type: 16
+  | flags: 2
+  | seq: 1999
+  | port: 531576
+  [ IFINFOMSG ]
+     | ifi_family: 0
+     | __ifi_pad: 0
+     | ifi_type: 772
+     | ifi_index: 1
+     | ifi_flags: 65609
+     | ifi_change: 0
+     [ ATTR ]
+        | interface: lo
+        | MAC address: 00:00:00:00:00:00
+
+[ NLMSGHDR ]
+  | length: 1392
+  | type: 16
+  | flags: 2
+  | seq: 1999
+  | port: 531576
+  [ IFINFOMSG ]
+     | ifi_family: 0
+     | __ifi_pad: 0
+     | ifi_type: 1
+     | ifi_index: 2
+     | ifi_flags: 69699
+     | ifi_change: 0
+     [ ATTR ]
+        | interface: wlp1s0
+        | MAC address: a4:c3:f0:82:e6:9b
+```
+Let's try to add some mock interfaces to see how the program responds:
+```
+$ sudo ip link add name dummy0 type dummy
+$ sudo ip link add name THISISATEST type dummy
+$ sudo ip link set THISISATEST up
+$ sudo ip link add name anothertest type dummy
+$ sudo ip link set anothertest up
+```
+`ip a show` outputs this:
+```text
+[...]
+
+6: dummy0: <BROADCAST,NOARP> mtu 1500 qdisc noop state DOWN group default qlen 1000
+    link/ether 66:cf:e1:36:d6:eb brd ff:ff:ff:ff:ff:ff
+7: THISISATEST: <BROADCAST,NOARP,UP,LOWER_UP> mtu 1500 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/ether a2:80:4d:25:dc:4b brd ff:ff:ff:ff:ff:ff
+    inet6 fe80::a080:4dff:fe25:dc4b/64 scope link 
+       valid_lft forever preferred_lft forever
+8: anothertest: <BROADCAST,NOARP,UP,LOWER_UP> mtu 1500 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/ether 62:d9:6f:07:44:5d brd ff:ff:ff:ff:ff:ff
+    inet6 fe80::60d9:6fff:fe07:445d/64 scope link 
+       valid_lft forever preferred_lft forever
+```
+and our clone:
+```text
+[*] user pid: 531901
+
+[...]
+
+[ NLMSGHDR ]
+  | length: 1368
+  | type: 16
+  | flags: 2
+  | seq: 1999
+  | port: 531901
+  [ IFINFOMSG ]
+     | ifi_family: 0
+     | __ifi_pad: 0
+     | ifi_type: 1
+     | ifi_index: 6
+     | ifi_flags: 130
+     | ifi_change: 0
+     [ ATTR ]
+        | interface: dummy0
+        | MAC address: 66:cf:e1:36:d6:eb
+
+[ NLMSGHDR ]
+  | length: 1372
+  | type: 16
+  | flags: 2
+  | seq: 1999
+  | port: 531901
+  [ IFINFOMSG ]
+     | ifi_family: 0
+     | __ifi_pad: 0
+     | ifi_type: 1
+     | ifi_index: 7
+     | ifi_flags: 65731
+     | ifi_change: 0
+     [ ATTR ]
+        | interface: THISISATEST
+        | MAC address: a2:80:4d:25:dc:4b
+
+[ NLMSGHDR ]
+  | length: 1372
+  | type: 16
+  | flags: 2
+  | seq: 1999
+  | port: 531901
+  [ IFINFOMSG ]
+     | ifi_family: 0
+     | __ifi_pad: 0
+     | ifi_type: 1
+     | ifi_index: 8
+     | ifi_flags: 65731
+     | ifi_change: 0
+     [ ATTR ]
+        | interface: anothertest
+        | MAC address: 62:d9:6f:07:44:5d
+```
