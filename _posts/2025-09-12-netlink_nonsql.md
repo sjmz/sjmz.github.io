@@ -46,8 +46,8 @@ where the socket syscal has the following signature:
 int socket(int domain, int type, int protocol);
 ```
 Notice how the domain and protocol fields are set:
-* **domain** refers to the general communication method, in this case AF_NETLINK.
-* **protocol** is the specific communication convention to use.
+* **domain** refers to the general communication method, in this case AF_NETLINK
+* **protocol** is the specific communication convention to use
 
 Be aware that it is correct to define the protocol field as the identifier of a kernel-side listening/sending socket when working with netlink.
 Let me explain what I mean.
@@ -133,10 +133,10 @@ In our case, for retrieving information about network interfaces, we need to sen
 
 Let's look at the other fields.
 
-* **nlmsg_seq** is used as an identifier for the packet. It is used to associate request to response. A response packet must set its sequence number to the one of the request it answers for.
-* **nlmsg_pid** identifies the sending process. Kernel messages are identified by 0, whereas user process usually use their pid.
-* **nlmsg_flags** specifies some properties of the packet. Usually, a single bit of this field has a particular meaning. For example, the bit called NLM_F_REQUEST, specifies that the packet is a request message. NLM_F_MULTI says that the packet is part of a collection of responses that answer to the same request. This last flag is used in case a single response packet cannot provide all the necessary information, or simply for a more logical and structured communication. 
-* **nlmsg_len** specifies the size of the whole packet: header length + payload length. More on this later.
+* **nlmsg_seq** is used as an identifier for the packet. It is used to associate request to response. A response packet must set its sequence number to the one of the request it answers for
+* **nlmsg_pid** identifies the sending process. Kernel messages are identified by 0, whereas user process usually use their pid
+* **nlmsg_flags** specifies some properties of the packet. Usually, a single bit of this field has a particular meaning. For example, the bit called NLM_F_REQUEST, specifies that the packet is a request message. NLM_F_MULTI says that the packet is part of a collection of responses that answer to the same request. This last flag is used in case a single response packet cannot provide all the necessary information, or simply for a more logical and structured communication
+* **nlmsg_len** specifies the size of the whole packet: header length + payload length. More on this later
 
 # **// nlmsghdr construction**
 
