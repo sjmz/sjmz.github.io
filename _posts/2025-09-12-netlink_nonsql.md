@@ -30,29 +30,37 @@ How does this work? Simple in theory: the kernel holds this information in some 
 
 We won't dive deep into that ifconfig approach, but instead we will see how ip uses **netlink sockets** to fetch information about network interfaces.
 
-# **netlink nockets**
+# **netlink sockets**
 
 The netlink protocol is a socket-based IPC (Inter Process Communication) mechanism based on RFC 3549.
 It provides bidirectional communication between two or multiple processes.
 The usual communication model expects a user process to talk to a kernel subsystem through a socket following the netlink protocol rules.
 
-Information about network interfaces is handled by the routing subsystem, called ``rtnetlink``.<br/>
+Information about network interfaces is handled by the routing subsystem, called **rtnetlink**.
 To communicate with it we first need to create a socket, in this way:
 ```c
 int s = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
 ```
-Notice how the domain and protocol fields are set.
-AF_NETLINK refers to the general protocol, in this case netlink.
-NETLINK_ROUTE specifies the netlink subsystem to talk to.
-Be aware that it is correct to define the protocol field as the identifier of a kernel-side listening/sending socket.
+where the socket syscal has the following signature:
+```c
+int socket(int domain, int type, int protocol);
+```
+Notice how the domain and protocol fields are set:
+* **domain** refers to the general communication method, in this case AF_NETLINK.
+* **protocol** is the specific communication convention to use.
+
+Be aware that it is correct to define the protocol field as the identifier of a kernel-side listening/sending socket when working with netlink.
 Let me explain what I mean.
 
 To be clear, I am running Ubuntu 20.04.06 LTS with Linux 5.15.175.
 Code snippets may be outdated with respect to newer version of Linux, but typically the logic remains intact.
 Back to sockets.
-The creation of a kernel-side netlink socket is primarly handled by the ``netlink_kernel_create()`` function.
-This is actually a wrapper to the more low-level \_\_netlink_kernel_create() found in net/netlink/af_netlink.c
-We can 'grep' for this function call and find the active kernel-side netlink sockets.
+
+# **netlink kernel socket creation**
+
+The creation of a kernel-side netlink socket is primarly handled by the ``netlink_kernel_create`` function.
+This is actually a wrapper to the more low-level ``__netlink_kernel_create`` found in net/netlink/af_netlink.c.
+We can "grep" for this function call and find the active kernel-side netlink sockets.
 
 ```text
 $ grep -R --include=*.c "= netlink_kernel_create\("
@@ -75,7 +83,7 @@ kernel/audit.c:	aunet->sk = netlink_kernel_create(net, NETLINK_AUDIT, &cfg);
 Notice how that ``sk = netlink_kernel_create(net, NETLINK_ROUTE, &cfg);`` aligns with its userland counterpart we create before.
 In our case, sent messages will be received by this 'rtnetlink' kernel socket.
 
-Looking at `net/core/rtnetlink.c` reveals this:
+net/core/rtnetlink.c reveals this:
 ```c
 static int __net_init rtnetlink_net_init(struct net *net)
 {                                                            
@@ -96,7 +104,7 @@ static int __net_init rtnetlink_net_init(struct net *net)
 }                                                            
 ```
 
-Little is going on here, but that ``cfg`` is very important.
+Little is going on here, but that `cfg` variable is very important.<br/>
 ``struct netlink_kernel_cfg`` defines some properties of a kernel netlink socket.
 Notably, the ``input`` function field specifies the handler of incoming packets on that socket.
 In this case set to ``rtnetlink_rcv``.
@@ -120,15 +128,15 @@ This field specifies the purpose/nature of the packet.
 The traditional values are generic and taken alone don't provide much information and cannot fulfill the various needs of the different subsystems that exploit netlink sockets.
 For this reason, there is the tendency to add and define more specific packet types.
 rtnetlink defines: RTM_GETLINK, RTM_NEWROUTE, RTM_GETNEXTHOP and many others.
-You can see all the routing specific packet types in `include/uapi/linux/rtnetlink.h`.
-In our case, for retrieving information about network interfaces, we need to send a RTM_GETLINK packet to the routing subsystem.
+You can see all the routing specific packet types in include/uapi/linux/rtnetlink.h.
+In our case, for retrieving information about network interfaces, we need to send a **RTM_GETLINK** packet to the routing subsystem.
 
 Let's look at the other fields.
 
-* nlmsg_seq is used as an identifier for the packet. It is used to associate request to response. A response packet must set its sequence number to the one of the request it answers for.
-* nlmsg_pid identifies the sending process. Kernel messages are identified by 0, whereas user process usually use their pid.
-* nlmsg_flags specifies some properties of the packet. Usually, a single bit of this field has a particular meaning. For example, the bit called NLM_F_REQUEST, specifies that the packet is a request message. NLM_F_MULTI says that the packet is part of a collection of responses that answer to the same request. This last flag is used in case a single response packet cannot provide all the necessary information , or simply for a more logical and structured communication. 
-* nlmsg_len specifies the size of the whole packet: header length + payload length. More on this later.
+* **nlmsg_seq** is used as an identifier for the packet. It is used to associate request to response. A response packet must set its sequence number to the one of the request it answers for.
+* **nlmsg_pid** identifies the sending process. Kernel messages are identified by 0, whereas user process usually use their pid.
+* **nlmsg_flags** specifies some properties of the packet. Usually, a single bit of this field has a particular meaning. For example, the bit called NLM_F_REQUEST, specifies that the packet is a request message. NLM_F_MULTI says that the packet is part of a collection of responses that answer to the same request. This last flag is used in case a single response packet cannot provide all the necessary information, or simply for a more logical and structured communication. 
+* **nlmsg_len** specifies the size of the whole packet: header length + payload length. More on this later.
 
 # **nlmsghdr construction**
 
@@ -149,11 +157,11 @@ nh_req->nlmsg_seq = 1999;
 I do not use dynamic memory for storing the packet, but I simply use a stack array that is sufficiently large for the whole message.
 
 The first thing to notice is the value for the nlmsg_flags field.
-The NLM_F_REQUEST flag is set, as well as NLM_F_DUMP.
+The **NLM_F_REQUEST** flag is set, as well as **NLM_F_DUMP**.
 This last flag tells rtnetlink to 'dump' the information of all the interfaces.
 
 The value for nlmsg_len might seem weird but it simply respects that header length + payload length rule.
-The NLMSG_SPACE macro is defined in the following manner (include/uapi/linux/netlink.h):
+The `NLMSG_SPACE` macro is defined in the following manner (include/uapi/linux/netlink.h):
 ```c
 #define NLMSG_SPACE(len) NLMSG_ALIGN(NLMSG_LENGTH(len))                  
 #define NLMSG_LENGTH(len) ((len) + NLMSG_HDRLEN)                         
@@ -180,7 +188,7 @@ struct ifinfomsg {
 };                                                                     
 ```
 
-For our purpose we can simply zero-out the whole structure, but ifi_index, for example, is used to specify the particular interface to fetch (see 'ip a show' output).
+For our purpose we can simply zero-out the whole structure, but ifi_index, for example, is used to specify the particular interface to fetch (see `ip a show` output).
 
 # **sending our message**
 
@@ -205,10 +213,10 @@ struct msghdr {
 };                                                                
 ```
 Where, for our purpose:
-* msg_name, believe it or not, specifies some information about the receiving socket
-* msg_namelen specifies the size of the aformentioned data structure that holds receiving socket information
-* msg_iov points to a structure called 'iovec'. This data structure refers to the actual data to send and its size
-* msg_iovlen is the number of these aformentioned 'iovecs'
+* **msg_name**, believe it or not, specifies some information about the receiving socket
+* **msg_namelen** specifies the size of the aformentioned data structure that holds receiving socket information
+* **msg_iov** points to a structure called 'iovec'. This data structure refers to the actual data to send and its size
+* **msg_iovlen** is the number of these aformentioned 'iovecs'
 
 We can prepare all this with:
 ```c
@@ -230,12 +238,12 @@ msg.msg_iov = &iov;
 msg.msg_iovlen = 1;
 ```
 
-`struct sockaddr_nl` contains a field called 'nl_pid', which in our case must be set to 0 since we are talking to the kernel, remember?
+`struct sockaddr_nl` contains a field called *nl_pid*, which in our case must be set to 0 since we are talking to the kernel, remember?
 
 # **interpreting the response**
 
 The response to a RTM_GETLINK dump request is a packet comprised of: nlmsghdr + ifinfomsg + several attributes.
-The ifinfomsg inside provides some general information about the interface. Most notably, the ifi_flags field is set to a value that represents the state of that device.
+The ifinfomsg inside provides some general information about the interface. Most notably, the **ifi_flags** field is set to a value that represents the state of that device.
 Reconsider the ip output and notice the various flags set for your interfaces:
 ```text
 wlp1s0: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
@@ -256,7 +264,7 @@ Similar thing for the MAC address which is identified with the IFLA_ADDRESS type
 You can look at all the specific attribute types in include/uapi/linux/if_link.h.
 
 Just for completeness, look at how the attributes are set when a response to a rtnetlink dump request is constructed in the kernel.
-rtnl_fill_ifinfo implemented in net/core/rtnetlink.c shows this:
+`rtnl_fill_ifinfo` implemented in net/core/rtnetlink.c shows this:
 ```c
 static int rtnl_fill_ifinfo(struct sk_buff *skb,
 			    struct net_device *dev, // fetched interface
@@ -291,9 +299,9 @@ static int rtnl_fill_ifinfo(struct sk_buff *skb,
 
 ```
 
-A few calls down from any 'nla_put' function, there is the presence of \_\_nla_reserve which makes space for the attribute to append and sets the TLV type field to the one specified as argument: IFLA_IFNAME, IFLA_TXQLEN, IFLA_LINKMODE etc.
+A few calls down from any 'nla_put' function, there is the presence of `__nla_reserve` which makes space for the attribute to append and sets the TLV type field to the one specified as argument: IFLA_IFNAME, IFLA_TXQLEN, IFLA_LINKMODE etc.
 
-# **more in-depth: struct nlmsghdr**
+# **nlmsghdr stuff**
 
 Let's put together a simple example.
 We send a RTM_GETLINK message and print the header of the netlink message we receive as response:
@@ -436,7 +444,7 @@ This means that, as response, we got multiple RTM_NEWLINK packets.
 One for each individual interface.
 Since this very first response contains legit information we can investigate even more.
 
-# **more in-depth: struct ifinfomsg**
+# **ifinfomsg stuff**
 
 To see the content of the ifinfomsg section we can simply do this:
 
@@ -461,7 +469,7 @@ int main(){
 
 ```
 
-The **NLMSG_DATA** macro jumps at the section right next to nlmsghdr, which in this case is the ifinfomsg structure.
+The `NLMSG_DATA` macro jumps at the section right next to nlmsghdr, which in this case is the ifinfomsg structure.
 
 The output of our little example is now this one:
 ```text
@@ -494,8 +502,8 @@ The ifi_index value is '1' and the output of ``ip link`` shows me this.
 ```
 The response is about the interface of index 1: 'lo' a.k.a. **the loopback interface**.
 Let's compare the interface flags we received as response to the ones shown by ip.
-``65609`` is ``10000000001001001`` in binary.
-**include/uapi/linux/if.h** shows this:
+**65609** is **10000000001001001** in binary.<br/>
+include/uapi/linux/if.h shows this:
 ```c
 enum net_device_flags {
 /* for compatibility with glibc net/if.h */
@@ -531,10 +539,10 @@ At least with the IFF_UP, IFF_LOOPBACK and IFF_LOWER_UP bits.
 
 Let's now extract the interface name and its MAC address stored in the attributes section of the response packet.
 
-# **more in-depth: struct nlattr**
+# **nlattr stuff**
 
-Internally, a netlink attribute is represented by ``struct nlattr``.
-You can find its definition in **include/uapi/linux/netlink.h** alongside a nice visualization of its location in a complete TLV structure:
+Internally, a netlink attribute is represented by `struct nlattr`.
+You can find its definition in include/uapi/linux/netlink.h alongside a nice visualization of its location in a complete TLV structure:
 ```c
 /*
  *  <------- NLA_HDRLEN ------> <-- NLA_ALIGN(payload)-->
@@ -551,12 +559,12 @@ struct nlattr {
 };
 ```
 
-This means that given a pointer defined as ``struct nlattr * attr``, we can access the stored payload by computing ``((char *) attr) + NLA_HDRLEN``.
+This means that with a given pointer defined as `struct nlattr * attr`, we can access the stored payload by computing `((char *) attr) + NLA_HDRLEN`.
 This will result in the access of the first byte of the payload.
-Then, depending on the context, the payload pointer can be treated in different ways.
-To access the next attribute we simply do: ``((char *) attr) + NLA_ALIGN(attr->nla_len)``.
+Then, depending on the context, resulting payload pointer can be treated in different ways.
+To access the next attribute we simply do: `((char *) attr) + NLA_ALIGN(attr->nla_len)`.
 Notice in the diagram how the nla_len field doesn't take in consideration the space dedicated for additional padding.
-For this reason we round nla_len up with the **NLA_ALIGN** macro.
+For this reason we round nla_len up with the `NLA_ALIGN` macro.
 
 # **a first result: extracting the interface name**
 
@@ -589,7 +597,7 @@ The output:
   len: 7
 ```
 
-By looking at **include/uapi/linux/if_link.h**, we see that a type 3 attribute is identified as IFLA_IFNAME: the name of the interface !.
+By looking at include/uapi/linux/if_link.h, we see that a type 3 attribute is identified as **IFLA_IFNAME**: the name of the interface !
 Let's print it:
 ```c
 printf("  if name: %s\n", ((char *) attr) + NLA_HDRLEN);
@@ -603,7 +611,7 @@ printf("  if name: %s\n", ((char *) attr) + NLA_HDRLEN);
 
 # **a second result: extracting the MAC address**
 
-A MAC address is a 6 bytes payload and internally is identified with the IFLA_ADDRESS attribute type.
+A MAC address is a 6 bytes payload and internally is identified with the **IFLA_ADDRESS** attribute type.
 We can traverse the attribute section and print it as we find it:
 
 ```c
@@ -635,4 +643,7 @@ And with this we get:
   MAC address: 00:00:00:00:00:00  
 ```
 This is everything but clean as there is no real guarantee that we find a MAC address.
-In this case is safe to do it, but a better approach will be discussed later.
+In this case is to ok do it, but a better approach cas be discussed.
+
+I stop here for now.
+I hope you found this interesting.
