@@ -420,7 +420,7 @@ Simply compile with ``gcc yourfilename.c -o yourprogramname``
 The associated output:
 
 ```text
-$ ./netlink_simple
+$ ./ip_clone
 [*] user pid: 502006
 [+] NETLINK_ROUTE socket created
 [+] NETLINK_ROUTE socket bound
@@ -849,3 +849,8 @@ and our clone:
         | interface: anothertest
         | MAC address: 62:d9:6f:07:44:5d
 ```
+
+We can stop here.
+The netlink subsystem is a complex and rich environment.
+There is a lot to explore: different netlink packets, how user and kernel sockets are created, multicast communication and much more, but all this for another moment.
+I hope you found this interesting.
