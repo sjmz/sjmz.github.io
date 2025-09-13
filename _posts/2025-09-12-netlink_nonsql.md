@@ -293,7 +293,7 @@ static int rtnl_fill_ifinfo(struct sk_buff *skb,
 
 A few calls down from any 'nla_put' function, there is the presence of \_\_nla_reserve which makes space for the attribute to append and sets the TLV type field to the one specified as argument: IFLA_IFNAME, IFLA_TXQLEN, IFLA_LINKMODE etc.
 
-# **more in-depth: nlmsghdr response**
+# **more in-depth: struct nlmsghdr**
 
 Let's put together a simple example.
 We send a RTM_GETLINK message and print the header of the netlink message we receive as response:
@@ -436,7 +436,7 @@ This means that, as response, we got multiple RTM_NEWLINK packets.
 One for each individual interface.
 Since this very first response contains legit information we can investigate even more.
 
-# **more in-depth: ifinfomsg response**
+# **more in-depth: struct ifinfomsg**
 
 To see the content of the ifinfomsg section we can simply do this:
 
@@ -450,7 +450,7 @@ void print_ifinfo(struct ifinfomsg * info){
 	printf("  ifi_change: %d\n", info->ifi_change);
 }
 
-int main ...
+int main(){
 
 	[...]
 
@@ -531,6 +531,8 @@ At least with the IFF_UP, IFF_LOOPBACK and IFF_LOWER_UP bits.
 
 Let's now extract the interface name and its MAC address stored in the attributes section of the response packet.
 
+# **more in-depth: struct nlattr**
+
 Internally, a netlink attribute is represented by ``struct nlattr``.
 You can find its definition in **include/uapi/linux/netlink.h** alongside a nice visualization of its location in a complete TLV structure:
 ```c
@@ -551,8 +553,30 @@ struct nlattr {
 
 This means that given a pointer defined as ``struct nlattr * attr``, we can access the stored payload by computing ``((char *) attr) + NLA_HDRLEN``.
 This will result in the access of the first byte of the payload.
-Then, depending on the context, the resulting pointer can be treated in different ways.
+Then, depending on the context, the payload pointer can be treated in different ways.
 To access the next attribute we simply do: ``((char *) attr) + NLA_ALIGN(attr->nla_len)``.
 Notice in the diagram how the nla_len field doesn't take in consideration the space dedicated for additional padding.
 For this reason we round nla_len up with the **NLA_ALIGN** macro.
+
+# **a first result: interface name extraction**
+
+Let's extract the information of the very first attribute stored in the response packet.
+```c
+void print_nlattr(struct nlattr * attr){
+	printf("  type: %d\n", attr->nla_type);
+	printf("  len: %d\n", attr->nla_len);
+}
+
+int main() {
+
+  [...]
+
+  attr = (struct nlattr * )(((char *) nh_rsp) + NLMSG_ALIGN(NLMSG_HDRLEN + sizeof(struct ifinfomsg)));
+  printf("[ NLATTR ]\n");
+  print_nlattr(attr);
+}
+```
+
+The output:
+```text
 
