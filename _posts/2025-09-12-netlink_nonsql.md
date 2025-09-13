@@ -4,7 +4,7 @@ title: "Non-SQL kernel querying: how ip lists your interfaces"
 date: 2025-09-12
 ---
 
-``ip`` is one of the most useful tools when comes to managing network interfaces.<br/>
+**ip** is one of the most useful tools when comes to managing network interfaces.<br/>
 You can bring an interface up:
 ```text
 $ sudo ip link set wlp1s0 up
@@ -25,10 +25,10 @@ That last command shows this:<br/>
 ```
 
 How does this work? Simple in theory: the kernel holds this information in some kind of data structure to be retrieved. How do you retrieve this? Two main paths can be followed:
-* Old and deprecated: ioctl calls as ``ifconfig`` does
+* Old and deprecated: ioctl calls as **ifconfig** does
 * New and standard: user-kernel socket communication as ip implements
 
-We won't dive deep into that ifconfig approach, but instead we will see how ip uses ``netlink sockets`` to fetch information about network interfaces.
+We won't dive deep into that ifconfig approach, but instead we will see how ip uses **netlink sockets** to fetch information about network interfaces.
 
 # **netlink nockets**
 
@@ -115,11 +115,11 @@ struct nlmsghdr {
 };                                                                              
 ```
 
-The nlmsg_type field can assume four standard values: NLMSG_NOOP, NLMSG_ERROR, NLMSG_DONE, NLMSG_OVERRUN (more on these later).
+The nlmsg_type field can assume four standard values: NLMSG_NOOP, NLMSG_ERROR, NLMSG_DONE and NLMSG_OVERRUN (more on NLMSG_DONE later).
 This field specifies the purpose/nature of the packet.
-These traditional values are generic and interpreted alone cannot fulfill the various needs of the different subsystems that use netlink sockets.
+The traditional values are generic and taken alone don't provide much information and cannot fulfill the various needs of the different subsystems that exploit netlink sockets.
 For this reason, there is the tendency to add and define more specific packet types.
-rtnetlink defines additionally: RTM_GETLINK, RTM_NEWROUTE, RTM_GETNEXTHOP and many others.
+rtnetlink defines: RTM_GETLINK, RTM_NEWROUTE, RTM_GETNEXTHOP and many others.
 You can see all the routing specific packet types in `include/uapi/linux/rtnetlink.h`.
 In our case, for retrieving information about network interfaces, we need to send a RTM_GETLINK packet to the routing subsystem.
 
@@ -407,7 +407,10 @@ int main(int argc, char ** argv[]){
 	return 0;
 }
 ```
+Simply compile with ``gcc yourfilename.c -o yourprogramname``
+
 The associated output:
+
 ```text
 $ ./netlink_simple
 [*] user pid: 502006
@@ -435,6 +438,53 @@ Since this very first response contains legit information we can investigate eve
 
 # **more in-depth: ifinfomsg response**
 
+To see the content of the ifinfomsg section we can simply do this:
+
+```c
+void print_ifinfo(struct ifinfomsg * info){
+	printf("  ifi_family: %d\n", info->ifi_family);
+	printf("  __ifi_pad: %d\n", info->__ifi_pad);
+	printf("  ifi_type: %d\n", info->ifi_type);
+	printf("  ifi_index: %d\n", info->ifi_index);
+	printf("  ifi_flags: %d\n", info->ifi_flags);
+	printf("  ifi_change: %d\n", info->ifi_change);
+}
+
+int main ...
+
+	[...]
+
+	nh_rsp = (struct nlmsghdr *) recv_buffer;
+	printf("[ IFINFOMSG RSP ]\n");
+	print_ifinfo(NLMSG_DATA(nh_rsp));
+}
+
+```
+
+The **NLMSG_DATA** macro jumps at the section right next to nlmsghdr, which in this case is the ifinfomsg structure.
+
+The output of our little example is now this one:
+```text
+[*] user pid: 507368
+[+] NETLINK_ROUTE socket created
+[+] NETLINK_ROUTE socket bound
+[+] 32 bytes sent
+
+[ NLMSGHDR RSP ]
+  length: 1348
+  type: 16
+  flags: 2
+  seq: 1999
+  port: 507368
+[ IFINFOMSG RSP ]
+  ifi_family: 0
+  __ifi_pad: 0
+  ifi_type: 772
+  ifi_index: 1
+  ifi_flags: 65609
+  ifi_change: 0
+```
+
 The ifi_index value is '1' and the output of ``ip link`` shows me this.
 ```text
 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000
@@ -443,13 +493,9 @@ The ifi_index value is '1' and the output of ``ip link`` shows me this.
     link/ether a4:c3:f0:82:e6:9b brd ff:ff:ff:ff:ff:ff
 ```
 The response is about the interface of index 1: 'lo' a.k.a. **the loopback interface**.
-
-
 Let's compare the interface flags we received as response to the ones shown by ip.
-
 ``65609`` is ``10000000001001001`` in binary.
-
-include/uapi/linux/if.h shows this:
+**include/uapi/linux/if.h** shows this:
 ```c
 enum net_device_flags {
 /* for compatibility with glibc net/if.h */
@@ -479,8 +525,8 @@ enum net_device_flags {
 };
 ```
 
-From this we can that the following bits are set: **IFF_UP**, **IFF_LOOPBACK**, **IFF_RUNNING** and **IFF_LOWER_UP**.
-Which is coherent to what ip teels us about the loopback interface.
+We can deduce that the following bits are set: **IFF_UP**, **IFF_LOOPBACK**, **IFF_RUNNING** and **IFF_LOWER_UP**.
+This is coherent to what ip teels us about the loopback interface.
 At least with the IFF_UP, IFF_LOOPBACK and IFF_LOWER_UP bits.
 
-Let's now extract the interface name and its MAC address stored in the attributes section of the packet.
+Let's now extract the interface name and its MAC address stored in the attributes section of the response packet.
